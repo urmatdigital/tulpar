@@ -1,14 +1,11 @@
-import { Metadata } from "next"
+"use client"
+
 import { Card, CardBody, CardHeader } from "@nextui-org/card"
 import { PhoneInput } from "@/components/auth/PhoneInput"
 import { OTPInput } from "@/components/auth/OTPInput"
 import { useState } from "react"
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs"
 import { useRouter } from "next/navigation"
-
-export const metadata: Metadata = {
-  title: "Вход | TULPAR EXPRESS",
-}
 
 export default function LoginPage() {
   const [step, setStep] = useState<'phone' | 'otp'>('phone')

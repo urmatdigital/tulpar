@@ -1,6 +1,7 @@
-'use client'
+"use client"
 
 import { Card, CardBody, CardHeader } from "@nextui-org/card"
+import { OTPInput } from "@/components/auth/OTPInput"
 import { Input } from "@nextui-org/input"
 import { Button } from "@nextui-org/button"
 import { useState, useEffect } from "react"
@@ -99,9 +100,7 @@ export default function VerifyPage() {
         </CardHeader>
         <CardBody className="p-6">
           <form onSubmit={handleSubmit} className="space-y-4">
-            <Input
-              type="text"
-              label="Код подтверждения"
+            <OTPInput
               value={verificationCode}
               onChange={(e) => setVerificationCode(e.target.value)}
               maxLength={6}
