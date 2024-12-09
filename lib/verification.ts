@@ -1,67 +1,44 @@
-import { createClient } from '@supabase/supabase-js'
+import { createClient } from "@supabase/supabase-js";
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SECRET_KEY!
-)
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+const supabaseKey = process.env.SUPABASE_SECRET_KEY!;
+const supabase = createClient(supabaseUrl, supabaseKey);
 
-export async function storeVerificationCode(
+export async function storeVerificationCode(phoneNumber: string, code: string) {
+  const expiresAt = new Date();
+  expiresAt.setMinutes(expiresAt.getMinutes() + 5); // Код действителен 5 минут
+
+  const { error } = await supabase.from("verification_codes").upsert({
+    phone_number: phoneNumber,
+    code: code,
+    expires_at: expiresAt.toISOString(),
+    created_at: new Date().toISOString(),
+  });
+
+  if (error) throw error;
+}
+
+export async function verifyCode(
   phoneNumber: string,
   code: string,
-  telegramChatId?: number
-) {
-  const expiresAt = new Date()
-  expiresAt.setMinutes(expiresAt.getMinutes() + 10) // Код действителен 10 минут
-
+): Promise<boolean> {
   const { data, error } = await supabase
-    .from('verification_codes')
-    .insert({
-      phone_number: phoneNumber,
-      code: code,
-      telegram_chat_id: telegramChatId,
-      expires_at: expiresAt.toISOString(),
-    })
+    .from("verification_codes")
     .select()
-    .single()
+    .eq("phone_number", phoneNumber)
+    .eq("code", code)
+    .single();
 
-  if (error) throw error
-  return data
-}
+  if (error || !data) return false;
 
-export async function verifyCode(phoneNumber: string, code: string) {
-  const { data, error } = await supabase
-    .from('verification_codes')
-    .select()
-    .eq('phone_number', phoneNumber)
-    .eq('code', code)
-    .eq('is_used', false)
-    .gt('expires_at', new Date().toISOString())
-    .single()
+  const expiresAt = new Date(data.expires_at);
+  if (expiresAt < new Date()) return false;
 
-  if (error) return false
+  // Удаляем использованный код
+  await supabase
+    .from("verification_codes")
+    .delete()
+    .eq("phone_number", phoneNumber);
 
-  if (data) {
-    // Помечаем код как использованный
-    await supabase
-      .from('verification_codes')
-      .update({ is_used: true })
-      .eq('id', data.id)
-
-    return true
-  }
-
-  return false
-}
-
-export async function getTelegramBinding(chatId: number) {
-  const { data, error } = await supabase
-    .from('verification_codes')
-    .select('phone_number')
-    .eq('telegram_chat_id', chatId)
-    .eq('is_used', false)
-    .gt('expires_at', new Date().toISOString())
-    .single()
-
-  if (error) return null
-  return data?.phone_number
+  return true;
 }

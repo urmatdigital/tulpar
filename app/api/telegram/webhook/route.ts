@@ -1,51 +1,43 @@
-import { NextResponse } from 'next/server'
-import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs'
-import { cookies } from 'next/headers'
-import { getTelegramBinding } from '@/lib/verification'
-import { sendWelcomeMessage } from '@/lib/telegram'
+import { NextResponse } from "next/server";
+import { handleTelegramUpdate } from "@/lib/telegram";
 
 export async function POST(request: Request) {
   try {
-    const update = await request.json()
-    const chatId = update.message?.chat?.id
-
-    if (!chatId) {
-      return NextResponse.json({ ok: true })
+    // Проверяем секрет webhook
+    const secret = request.headers.get("x-telegram-bot-api-secret-token");
+    if (secret !== process.env.TELEGRAM_WEBHOOK_SECRET) {
+      return NextResponse.json(
+        { error: "Invalid webhook secret" },
+        { status: 401 },
+      );
     }
 
-    // Обработка команды /start
-    if (update.message?.text === '/start') {
-      await sendWelcomeMessage(chatId)
-      return NextResponse.json({ ok: true })
+    const update = await request.json();
+    const result = await handleTelegramUpdate(update);
+
+    if (result.error) {
+      console.error("Error handling Telegram update:", result.error);
+      return NextResponse.json({ error: result.error }, { status: 500 });
     }
 
-    // Проверяем привязку к номеру телефона
-    const phoneNumber = await getTelegramBinding(chatId)
-    if (phoneNumber) {
-      const supabase = createRouteHandlerClient({ cookies })
-      
-      // Обновляем telegram_chat_id в таблице users
-      await supabase
-        .from('users')
-        .update({ telegram_chat_id: chatId })
-        .eq('phone_number', phoneNumber)
-    }
-
-    return NextResponse.json({ ok: true })
+    return NextResponse.json({ success: true });
   } catch (error) {
-    console.error('Telegram webhook error:', error)
-    return NextResponse.json({ ok: false }, { status: 500 })
+    console.error("Error in webhook route:", error);
+    return NextResponse.json(
+      { error: "Internal server error" },
+      { status: 500 },
+    );
   }
 }
 
 // Верификация webhook от Telegram
 export async function GET(request: Request) {
-  const { searchParams } = new URL(request.url)
-  const secret = searchParams.get('secret')
+  const { searchParams } = new URL(request.url);
+  const secret = searchParams.get("secret");
 
   if (secret !== process.env.TELEGRAM_WEBHOOK_SECRET) {
-    return NextResponse.json({ error: 'Invalid secret' }, { status: 403 })
+    return NextResponse.json({ error: "Invalid secret" }, { status: 403 });
   }
 
-  return NextResponse.json({ ok: true })
+  return NextResponse.json({ ok: true });
 }

@@ -1,20 +1,22 @@
-'use client'
+"use client";
 
-import { useEffect, useState } from 'react'
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs'
-import { Card, CardBody } from '@nextui-org/card'
+import { useEffect, useState } from "react";
+import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { Card, CardBody } from "@nextui-org/card";
 
 export default function DashboardPage() {
-  const [user, setUser] = useState<any>(null)
-  const supabase = createClientComponentClient()
+  const [user, setUser] = useState<any>(null);
+  const supabase = createClientComponentClient();
 
   useEffect(() => {
     const getUser = async () => {
-      const { data: { user } } = await supabase.auth.getUser()
-      setUser(user)
-    }
-    getUser()
-  }, [supabase.auth])
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      setUser(user);
+    };
+    getUser();
+  }, [supabase.auth]);
 
   return (
     <div className="container mx-auto p-4">
@@ -25,5 +27,5 @@ export default function DashboardPage() {
         </CardBody>
       </Card>
     </div>
-  )
+  );
 }

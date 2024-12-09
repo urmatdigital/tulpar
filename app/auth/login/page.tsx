@@ -1,65 +1,48 @@
-"use client"
+"use client";
 
-import { Card, CardBody, CardHeader } from "@nextui-org/card"
-import { PhoneInput } from "@/components/auth/PhoneInput"
-import { OTPInput } from "@/components/auth/OTPInput"
-import { useState } from "react"
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs"
-import { useRouter } from "next/navigation"
+import { Card, CardBody, CardHeader } from "@nextui-org/card";
+import { LoginForm } from "@/components/auth/LoginForm";
+import { VerificationForm } from "@/components/auth/VerificationForm";
+import { useState } from "react";
 
 export default function LoginPage() {
-  const [step, setStep] = useState<'phone' | 'otp'>('phone')
-  const [phone, setPhone] = useState('')
-  const [isLoading, setIsLoading] = useState(false)
-  const supabase = createClientComponentClient()
-  const router = useRouter()
+  const [step, setStep] = useState<"phone" | "verification">("phone");
+  const [phone, setPhone] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
 
   const handlePhoneSubmit = async (phoneNumber: string) => {
-    setIsLoading(true)
+    setIsLoading(true);
     try {
-      const { error } = await supabase.auth.signInWithOtp({
-        phone: phoneNumber,
-      })
-
-      if (error) throw error
-
-      setPhone(phoneNumber)
-      setStep('otp')
+      setPhone(phoneNumber);
+      setStep("verification");
     } catch (error) {
-      console.error('Error sending OTP:', error)
-      // Здесь можно добавить обработку ошибок
+      console.error("Error sending OTP:", error);
     } finally {
-      setIsLoading(false)
+      setIsLoading(false);
     }
-  }
+  };
 
-  const handleOTPSubmit = async (otp: string) => {
-    setIsLoading(true)
+  const handleResendCode = async () => {
     try {
-      const { error } = await supabase.auth.verifyOtp({
-        phone: phone,
-        token: otp,
-        type: 'sms'
-      })
+      const response = await fetch("/api/auth/send-code", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ phone }),
+      });
 
-      if (error) throw error
+      if (!response.ok) {
+        throw new Error("Failed to resend code");
+      }
 
-      router.push('/dashboard')
+      // Перенаправляем в Telegram
+      window.location.href =
+        process.env.NEXT_PUBLIC_TELEGRAM_URL || "https://t.me/tekg_bot";
     } catch (error) {
-      console.error('Error verifying OTP:', error)
-      // Здесь можно добавить обработку ошибок
-    } finally {
-      setIsLoading(false)
+      console.error("Error resending code:", error);
     }
-  }
-
-  const handleResendOTP = async () => {
-    try {
-      await handlePhoneSubmit(phone)
-    } catch (error) {
-      console.error('Error resending OTP:', error)
-    }
-  }
+  };
 
   return (
     <div className="flex min-h-screen items-center justify-center p-4">
@@ -67,26 +50,22 @@ export default function LoginPage() {
         <CardHeader className="flex flex-col gap-1 p-6">
           <h1 className="text-2xl font-bold">Вход в систему</h1>
           <p className="text-default-500">
-            {step === 'phone' 
-              ? 'Введите номер телефона для получения кода' 
-              : 'Введите код, отправленный на ваш телефон'}
+            {step === "phone"
+              ? "Введите номер телефона для получения кода"
+              : "Введите код, отправленный на ваш телефон"}
           </p>
         </CardHeader>
         <CardBody className="p-6">
-          {step === 'phone' ? (
-            <PhoneInput 
-              onSubmit={handlePhoneSubmit}
-              isLoading={isLoading}
-            />
+          {step === "phone" ? (
+            <LoginForm onSubmit={handlePhoneSubmit} />
           ) : (
-            <OTPInput
-              onSubmit={handleOTPSubmit}
-              onResend={handleResendOTP}
-              isLoading={isLoading}
+            <VerificationForm
+              phone={phone}
+              onResendCode={handleResendCode}
             />
           )}
         </CardBody>
       </Card>
     </div>
-  )
+  );
 }

@@ -1,59 +1,144 @@
-import TelegramBot from 'node-telegram-bot-api'
+import TelegramBot from "node-telegram-bot-api";
+import { createClient } from "@supabase/supabase-js";
 
-const token = process.env.TELEGRAM_BOT_TOKEN!
-const bot = new TelegramBot(token, { polling: false })
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SECRET_KEY!,
+);
 
-export const sendVerificationCode = async (
-  chatId: string | number,
-  code: string,
-  phone: string
-) => {
-  const message = `
-Ваш код подтверждения: ${code}
+// Инициализация бота
+const bot = new TelegramBot(process.env.TELEGRAM_BOT_TOKEN!, {
+  webHook: {
+    port: 443,
+  },
+});
 
-Для завершения регистрации перейдите по ссылке ниже и введите этот код.
-`
+// Установка webhook URL
+const webhookUrl = `${process.env.NEXT_PUBLIC_APP_URL}/api/telegram/webhook`;
+bot.setWebHook(webhookUrl, {
+  certificate: undefined,
+  max_connections: 40,
+});
 
-  const inlineKeyboard = {
-    inline_keyboard: [
+export async function sendTelegramMessage(text: string, chatId?: number) {
+  try {
+    await bot.sendMessage(chatId || process.env.TELEGRAM_CHAT_ID!, text);
+    return true;
+  } catch (error) {
+    console.error("Error sending Telegram message:", error);
+    return false;
+  }
+}
+
+export async function requestContact(chatId: number) {
+  const keyboard = {
+    keyboard: [
       [
         {
-          text: 'Завершить регистрацию',
-          url: `${process.env.NEXT_PUBLIC_APP_URL}/auth/verify?phone=${encodeURIComponent(phone)}`
-        }
-      ]
-    ]
-  }
+          text: "📱 Отправить номер телефона",
+          request_contact: true,
+        },
+      ],
+    ],
+    resize_keyboard: true,
+    one_time_keyboard: true,
+  };
 
-  return await bot.sendMessage(chatId, message, {
-    parse_mode: 'HTML',
-    reply_markup: inlineKeyboard
-  })
+  await bot.sendMessage(
+    chatId,
+    "Для продолжения регистрации, пожалуйста, поделитесь своим номером телефона",
+    { reply_markup: keyboard },
+  );
 }
 
-export const sendWelcomeMessage = async (chatId: string | number) => {
-  const message = `
-Добро пожаловать в TULPAR EXPRESS! 🚀
+export async function handleTelegramUpdate(update: any) {
+  try {
+    const message = update.message;
 
-Я помогу вам отслеживать ваши посылки и получать уведомления об их статусе.
-
-Для начала работы, пожалуйста, зарегистрируйтесь на нашем сайте:
-${process.env.NEXT_PUBLIC_APP_URL}/auth/login
-`
-
-  return await bot.sendMessage(chatId, message, {
-    parse_mode: 'HTML',
-    reply_markup: {
-      inline_keyboard: [
-        [
-          {
-            text: 'Зарегистрироваться',
-            url: `${process.env.NEXT_PUBLIC_APP_URL}/auth/login`
-          }
-        ]
-      ]
+    if (!message) {
+      return { error: "No message in update" };
     }
-  })
-}
 
-export default bot
+    const chatId = message.chat.id;
+
+    // Если получен контакт
+    if (message.contact) {
+      const { phone_number, user_id, first_name, last_name } = message.contact;
+
+      // Проверяем, что user_id совпадает с отправителем
+      if (user_id !== message.from.id) {
+        await sendTelegramMessage(
+          "Пожалуйста, отправьте свой собственный контакт",
+          chatId,
+        );
+        return { error: "Invalid contact" };
+      }
+
+      // Сохраняем данные пользователя
+      const { error: userError } = await supabase.from("users").upsert({
+        phone: phone_number,
+        telegram_id: user_id,
+        first_name,
+        last_name,
+        username: message.from.username,
+        auth_date: Math.floor(Date.now() / 1000),
+      });
+
+      if (userError) {
+        console.error("Error saving user:", userError);
+        await sendTelegramMessage(
+          "Произошла ошибка при сохранении данных",
+          chatId,
+        );
+        return { error: userError };
+      }
+
+      // Получаем код верификации для этого номера
+      const { data: verificationData } = await supabase
+        .from("verification_codes")
+        .select()
+        .eq("phone", phone_number)
+        .eq("used", false)
+        .gt("expires_at", new Date().toISOString())
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .single();
+
+      if (verificationData) {
+        // Отправляем код подтверждения
+        await sendTelegramMessage(
+          `Ваш код подтверждения: ${verificationData.code}`,
+          chatId,
+        );
+        return { success: true };
+      } else {
+        await sendTelegramMessage(
+          "Код подтверждения не найден или истек. Пожалуйста, запросите новый код на сайте.",
+          chatId,
+        );
+        return { error: "No valid verification code found" };
+      }
+    }
+
+    // Если это первое сообщение /start
+    if (message.text === "/start") {
+      await sendTelegramMessage(
+        "Добро пожаловать в TULPAR EXPRESS! 🚀\n\nДля продолжения регистрации, пожалуйста, нажмите на кнопку ниже, чтобы поделиться своим номером телефона.",
+        chatId,
+      );
+      await requestContact(chatId);
+      return { success: true };
+    }
+
+    // Для всех остальных сообщений
+    await sendTelegramMessage(
+      "Пожалуйста, используйте кнопку 'Отправить номер телефона' для регистрации",
+      chatId,
+    );
+    await requestContact(chatId);
+    return { success: true };
+  } catch (error) {
+    console.error("Error handling Telegram update:", error);
+    return { error: "Internal server error" };
+  }
+}

@@ -1,43 +1,90 @@
-import { NextResponse } from 'next/server'
-import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs'
-import { cookies } from 'next/headers'
-import { verifyCode } from '@/lib/verification'
+import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
+import { cookies } from "next/headers";
+import { NextResponse } from "next/server";
 
 export async function POST(request: Request) {
   try {
-    const { phoneNumber, code, password } = await request.json()
-    const supabase = createRouteHandlerClient({ cookies })
+    const { phone, code } = await request.json();
 
-    // Проверяем код
-    const isValid = await verifyCode(phoneNumber, code)
-    if (!isValid) {
+    if (!phone || !code) {
       return NextResponse.json(
-        { error: 'Invalid or expired verification code' },
-        { status: 400 }
-      )
+        { error: "Phone and code are required" },
+        { status: 400 },
+      );
     }
 
-    // Создаем или обновляем пользователя
-    const { data: user, error: userError } = await supabase
-      .from('users')
-      .upsert({
-        phone_number: phoneNumber,
-        password_hash: password, // В реальном приложении нужно хешировать пароль
-        updated_at: new Date().toISOString(),
-      })
+    const supabase = createRouteHandlerClient({ cookies });
+
+    // Проверяем код верификации
+    const { data: verificationData, error: verificationError } = await supabase
+      .from("verification_codes")
       .select()
-      .single()
+      .eq("phone", phone)
+      .eq("code", code)
+      .eq("used", false)
+      .gt("expires_at", new Date().toISOString())
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .single();
 
-    if (userError) {
-      throw userError
+    if (verificationError || !verificationData) {
+      return NextResponse.json(
+        { error: "Invalid or expired code" },
+        { status: 400 },
+      );
     }
 
-    return NextResponse.json({ success: true, user })
+    // Помечаем код как использованный
+    await supabase
+      .from("verification_codes")
+      .update({ used: true })
+      .eq("id", verificationData.id);
+
+    // Получаем данные пользователя
+    const { data: userData, error: userError } = await supabase
+      .from("users")
+      .select()
+      .eq("phone", phone)
+      .single();
+
+    if (userError || !userData) {
+      return NextResponse.json({ error: "User not found" }, { status: 404 });
+    }
+
+    // Создаем сессию пользователя
+    const { data: sessionData, error: sessionError } =
+      await supabase.auth.signUp({
+        email: `${userData.telegram_id}@te.kg`,
+        password: process.env.SUPABASE_USER_PASSWORD + userData.telegram_id,
+        phone: phone,
+        options: {
+          data: {
+            telegram_id: userData.telegram_id,
+            first_name: userData.first_name,
+            last_name: userData.last_name,
+            username: userData.username,
+            phone: phone,
+          },
+        },
+      });
+
+    if (sessionError) {
+      console.error("Session error:", sessionError);
+      return NextResponse.json(
+        { error: "Failed to create session" },
+        { status: 500 },
+      );
+    }
+
+    return NextResponse.json({
+      success: true,
+      session: sessionData.session,
+    });
   } catch (error) {
-    console.error('Error verifying code:', error)
+    console.error("Error in verify-code route:", error);
     return NextResponse.json(
-      { error: 'Failed to verify code' },
-      { status: 500 }
-    )
+      { error: "Internal server error" },
+      { status: 500 },
+    );
   }
 }

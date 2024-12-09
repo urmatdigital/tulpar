@@ -1,38 +1,54 @@
-import { NextResponse } from 'next/server'
-import { sendVerificationCode } from '@/lib/telegram'
-import { storeVerificationCode } from '@/lib/verification'
-
-// Генерация случайного 6-значного кода
-function generateVerificationCode() {
-  return Math.floor(100000 + Math.random() * 900000).toString()
-}
+import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
+import { cookies } from "next/headers";
+import { NextResponse } from "next/server";
+import { sendTelegramMessage } from "@/lib/telegram";
 
 export async function POST(request: Request) {
   try {
-    const { phoneNumber } = await request.json()
-    
-    if (!phoneNumber) {
+    const { phone } = await request.json();
+
+    if (!phone || !/^\+?[0-9]{10,15}$/.test(phone)) {
       return NextResponse.json(
-        { error: 'Phone number is required' },
-        { status: 400 }
-      )
+        { error: "Invalid phone number" },
+        { status: 400 },
+      );
     }
 
-    // Генерируем код
-    const code = generateVerificationCode()
+    const supabase = createRouteHandlerClient({ cookies });
 
-    // Сохраняем код в Supabase
-    await storeVerificationCode(phoneNumber, code)
+    // Генерируем 4-значный код
+    const code = Math.floor(1000 + Math.random() * 9000).toString();
+
+    // Сохраняем код и телефон в Supabase
+    const { error: dbError } = await supabase
+      .from("verification_codes")
+      .insert([
+        {
+          phone,
+          code,
+          expires_at: new Date(Date.now() + 15 * 60 * 1000).toISOString(), // 15 минут
+        },
+      ]);
+
+    if (dbError) {
+      console.error("Database error:", dbError);
+      return NextResponse.json(
+        { error: "Failed to save verification code" },
+        { status: 500 },
+      );
+    }
 
     // Отправляем код через Telegram
-    await sendVerificationCode(phoneNumber, code)
+    await sendTelegramMessage(
+      `Ваш код подтверждения: ${code}\nДействителен 15 минут.`,
+    );
 
-    return NextResponse.json({ success: true })
+    return NextResponse.json({ success: true });
   } catch (error) {
-    console.error('Error sending verification code:', error)
+    console.error("Error in send-code route:", error);
     return NextResponse.json(
-      { error: 'Failed to send verification code' },
-      { status: 500 }
-    )
+      { error: "Internal server error" },
+      { status: 500 },
+    );
   }
 }
