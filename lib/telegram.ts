@@ -9,7 +9,7 @@ const supabase = createClient(
 // Инициализация бота
 const bot = new TelegramBot(process.env.TELEGRAM_BOT_TOKEN!, {
   webHook: {
-    port: 443,
+    port: process.env.PORT ? parseInt(process.env.PORT) : 3000,
   },
 });
 
