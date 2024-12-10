@@ -3,13 +3,18 @@
   "version": "0.0.1",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "next dev -p 3000",
+    "dev:api": "next dev -p 3001",
     "build": "next build",
-    "start": "next start -p $PORT",
+    "postbuild": "next-sitemap",
+    "start": "next start -p 3000",
+    "start:api": "next start -p 3001",
     "lint": "next lint",
     "format": "prettier --write .",
     "check-db": "npx tsx scripts/check-db.ts",
-    "execute-sql": "npx tsx scripts/execute-sql-pg.ts"
+    "execute-sql": "npx tsx scripts/execute-sql-pg.ts",
+    "clean": "powershell -ExecutionPolicy Bypass -File ./scripts/clean.ps1",
+    "stop": "powershell -ExecutionPolicy Bypass -File ./scripts/stop.ps1"
   },
   "dependencies": {
     "@nextui-org/button": "2.2.3",
@@ -63,6 +68,7 @@
     "eslint-plugin-react": "^7.23.2",
     "eslint-plugin-react-hooks": "^4.6.0",
     "eslint-plugin-unused-imports": "4.1.4",
+    "next-sitemap": "^4.2.3",
     "pg": "^8.13.1",
     "postcss": "8.4.49",
     "prettier": "^3.3.3",

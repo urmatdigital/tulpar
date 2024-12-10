@@ -1,66 +1,105 @@
+import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { cookies } from "next/headers";
-import { NextResponse, NextRequest } from "next/server";
+import { getSupabaseConfig, validateEnvVariables } from "@/lib/env";
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const supabaseKey = process.env.SUPABASE_SECRET_KEY;
-
-if (!supabaseUrl || !supabaseKey) {
-  throw new Error("Missing Supabase environment variables");
-}
-
-const supabase = createClient(supabaseUrl, supabaseKey);
-
-export async function GET(request: NextRequest) {
-  const requestUrl = new URL(request.url);
-  const telegramData = requestUrl.searchParams.get("tgAuthResult");
-
-  if (!telegramData) {
-    return NextResponse.redirect(
-      `${requestUrl.origin}/auth/login?error=telegram_auth_failed`,
-    );
-  }
-
+export async function GET(request: Request) {
   try {
-    // Декодируем и проверяем данные от Telegram
-    const decodedData = JSON.parse(
-      Buffer.from(telegramData, "base64").toString(),
-    );
+    // Проверяем наличие всех необходимых переменных окружения
+    validateEnvVariables();
 
-    // Здесь нужно добавить проверку hash от Telegram
+    const { supabaseUrl, supabaseKey } = getSupabaseConfig();
+    const supabase = createClient(supabaseUrl, supabaseKey);
+
+    const url = new URL(request.url);
+    const params = new URLSearchParams(url.search);
+    
+    // Получаем данные от Telegram
+    const telegramData = {
+      id: params.get("id"),
+      first_name: params.get("first_name"),
+      username: params.get("username"),
+      auth_date: params.get("auth_date"),
+      hash: params.get("hash")
+    };
+
+    // Проверяем наличие всех необходимых параметров
+    if (!telegramData.id || !telegramData.auth_date || !telegramData.hash) {
+      return NextResponse.json(
+        { error: "Missing required Telegram parameters" },
+        { status: 400 }
+      );
+    }
 
     // Проверяем существование пользователя
-    const { data: existingUser } = await supabase
+    const { data: existingUser, error: userError } = await supabase
       .from("users")
       .select()
-      .eq("telegram_id", decodedData.id)
+      .eq("telegram_id", telegramData.id)
       .single();
+
+    if (userError && userError.code !== "PGRST116") {
+      console.error("Error checking existing user:", userError);
+      return NextResponse.json(
+        { error: "Database error" },
+        { status: 500 }
+      );
+    }
 
     if (!existingUser) {
       // Создаем нового пользователя
-      const { error: insertError } = await supabase.from("users").insert({
-        telegram_id: decodedData.id,
-        full_name:
-          `${decodedData.first_name} ${decodedData.last_name || ""}`.trim(),
-        role: "client",
-      });
+      const { error: createError } = await supabase
+        .from("users")
+        .insert([{
+          telegram_id: telegramData.id,
+          first_name: telegramData.first_name || "",
+          username: telegramData.username || "",
+          auth_date: new Date(parseInt(telegramData.auth_date) * 1000).toISOString(),
+          role: "user"
+        }]);
 
-      if (insertError) throw insertError;
+      if (createError) {
+        console.error("Error creating user:", createError);
+        return NextResponse.json(
+          { error: "Failed to create user" },
+          { status: 500 }
+        );
+      }
+    } else {
+      // Обновляем данные существующего пользователя
+      const { error: updateError } = await supabase
+        .from("users")
+        .update({
+          first_name: telegramData.first_name || existingUser.first_name,
+          username: telegramData.username || existingUser.username,
+          auth_date: new Date(parseInt(telegramData.auth_date) * 1000).toISOString()
+        })
+        .eq("telegram_id", telegramData.id);
+
+      if (updateError) {
+        console.error("Error updating user:", updateError);
+        return NextResponse.json(
+          { error: "Failed to update user" },
+          { status: 500 }
+        );
+      }
     }
 
-    // Создаем сессию для пользователя
-    const { error: signInError } = await supabase.auth.signInWithPassword({
-      email: `${decodedData.id}@telegram.user`,
-      password: process.env.TELEGRAM_USER_SECRET + decodedData.id,
-    });
+    // Получаем URL для редиректа из переменных окружения
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL;
+    if (!appUrl) {
+      return NextResponse.json(
+        { error: "Missing APP_URL configuration" },
+        { status: 500 }
+      );
+    }
 
-    if (signInError) throw signInError;
-
-    return NextResponse.redirect(`${requestUrl.origin}/dashboard`);
+    // Перенаправляем на главную страницу
+    return NextResponse.redirect(`${appUrl}/dashboard`);
   } catch (error) {
-    console.error("Telegram authentication error:", error);
-    return NextResponse.redirect(
-      `${requestUrl.origin}/auth/login?error=telegram_auth_failed`,
+    console.error("Error in telegram-callback route:", error);
+    return NextResponse.json(
+      { error: "Failed to process Telegram callback" },
+      { status: 500 }
     );
   }
 }

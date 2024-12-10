@@ -48,12 +48,62 @@
 # Установка зависимостей
 npm install
 
-# Запуск в режиме разработки
+# Запуск клиентской части (порт 3000)
 npm run dev
 
-# Сборка для продакшена
-npm run build
+# Запуск серверной части (порт 3001)
+npm run dev:api
 ```
+
+### Развертывание на Railway
+
+1. Подключите ваш GitHub репозиторий к Railway:
+   - Создайте новый проект в Railway
+   - Выберите "Deploy from GitHub repo"
+   - Выберите ваш репозиторий
+
+2. Настройте переменные окружения в Railway:
+   ```env
+   # Supabase
+   NEXT_PUBLIC_SUPABASE_URL=ваш_url
+   NEXT_PUBLIC_SUPABASE_ANON_KEY=ваш_ключ
+   SUPABASE_SECRET_KEY=ваш_секретный_ключ
+   
+   # Telegram
+   TELEGRAM_BOT_TOKEN=токен_бота
+   TELEGRAM_WEBHOOK_SECRET=секрет_вебхука
+   TELEGRAM_USER_SECRET=секрет_пользователя
+   NEXT_PUBLIC_TELEGRAM_BOT_USERNAME=имя_бота
+   
+   # URLs
+   NEXT_PUBLIC_APP_URL=https://api.te.kg
+   FRONTEND_URL=https://te.kg
+   
+   # Порты для разных сервисов
+   PORT=3001  # для API
+   ```
+
+3. Настройте домены в Railway:
+   - Для клиентской части: te.kg
+   - Для API: api.te.kg
+
+4. Проверьте статус развертывания:
+   - Откройте вкладку Deployments в Railway
+   - Убедитесь, что оба сервиса (клиент и API) успешно запущены
+   - Проверьте логи на наличие ошибок
+
+5. Настройте Telegram webhook:
+   ```bash
+   curl -F "url=https://api.te.kg/api/telegram/webhook" \
+        -F "secret_token=ваш_секрет_вебхука" \
+        https://api.telegram.org/bot<токен_бота>/setWebhook
+   ```
+
+### Мониторинг и поддержка
+
+- Логи доступны в разделе Deployments > Logs
+- Метрики использования в разделе Metrics
+- Настройки масштабирования в разделе Settings > Scaling
 
 ### Переменные окружения
 

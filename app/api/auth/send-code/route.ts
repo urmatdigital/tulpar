@@ -1,60 +1,61 @@
-import { createClient } from "@supabase/supabase-js";
-import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
-import { sendTelegramMessage } from "@/lib/telegram";
-
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const supabaseKey = process.env.SUPABASE_SECRET_KEY;
-
-if (!supabaseUrl || !supabaseKey) {
-  throw new Error("Missing Supabase environment variables");
-}
-
-const supabase = createClient(supabaseUrl, supabaseKey);
+import { createClient } from "@supabase/supabase-js";
+import { getSupabaseConfig, validateEnvVariables } from "@/lib/env";
+import { generateVerificationCode, storeVerificationCode } from "@/lib/verification";
+import { sendVerificationCode } from "@/lib/telegram";
 
 export async function POST(request: Request) {
   try {
+    // Проверяем наличие всех необходимых переменных окружения
+    validateEnvVariables();
+
     const { phone } = await request.json();
 
-    if (!phone || !/^\+?[0-9]{10,15}$/.test(phone)) {
+    if (!phone) {
       return NextResponse.json(
-        { error: "Invalid phone number" },
+        { error: "Phone number is required" },
         { status: 400 },
       );
     }
 
-    // Генерируем 4-значный код
-    const code = Math.floor(1000 + Math.random() * 9000).toString();
+    const { supabaseUrl, supabaseKey } = getSupabaseConfig();
+    const supabase = createClient(supabaseUrl, supabaseKey);
 
-    // Сохраняем код и телефон в Supabase
-    const { error: dbError } = await supabase
-      .from("verification_codes")
-      .insert([
-        {
-          phone,
-          code,
-          expires_at: new Date(Date.now() + 15 * 60 * 1000).toISOString(), // 15 минут
-        },
-      ]);
+    // Проверяем существование пользователя
+    const { data: user, error: userError } = await supabase
+      .from("users")
+      .select("telegram_id")
+      .eq("phone", phone)
+      .single();
 
-    if (dbError) {
-      console.error("Database error:", dbError);
+    if (userError || !user?.telegram_id) {
       return NextResponse.json(
-        { error: "Failed to save verification code" },
-        { status: 500 },
+        { error: "User not found or Telegram not connected" },
+        { status: 404 },
       );
     }
 
+    // Генерируем код верификации
+    const code = generateVerificationCode();
+
+    // Сохраняем код в базе данных
+    await storeVerificationCode(supabase, phone, code);
+
     // Отправляем код через Telegram
-    await sendTelegramMessage(
-      `Ваш код подтверждения: ${code}\nДействителен 15 минут.`,
-    );
+    const sent = await sendVerificationCode(user.telegram_id.toString(), code);
+    
+    if (!sent) {
+      return NextResponse.json(
+        { error: "Failed to send verification code" },
+        { status: 500 },
+      );
+    }
 
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error("Error in send-code route:", error);
     return NextResponse.json(
-      { error: "Internal server error" },
+      { error: "Failed to send verification code" },
       { status: 500 },
     );
   }

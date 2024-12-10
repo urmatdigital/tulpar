@@ -1,10 +1,14 @@
-import { createClient } from "@supabase/supabase-js";
+import { SupabaseClient } from "@supabase/supabase-js";
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseKey = process.env.SUPABASE_SECRET_KEY!;
-const supabase = createClient(supabaseUrl, supabaseKey);
+export function generateVerificationCode(): string {
+  return Math.floor(1000 + Math.random() * 9000).toString();
+}
 
-export async function storeVerificationCode(phoneNumber: string, code: string) {
+export async function storeVerificationCode(
+  supabase: SupabaseClient,
+  phoneNumber: string,
+  code: string
+) {
   const expiresAt = new Date();
   expiresAt.setMinutes(expiresAt.getMinutes() + 5); // Код действителен 5 минут
 
@@ -19,8 +23,9 @@ export async function storeVerificationCode(phoneNumber: string, code: string) {
 }
 
 export async function verifyCode(
+  supabase: SupabaseClient,
   phoneNumber: string,
-  code: string,
+  code: string
 ): Promise<boolean> {
   const { data, error } = await supabase
     .from("verification_codes")

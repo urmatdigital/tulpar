@@ -1,31 +1,27 @@
 import { NextResponse } from "next/server";
+import { createClient } from "@supabase/supabase-js";
+import { getSupabaseConfig, validateEnvVariables } from "@/lib/env";
 import { handleTelegramUpdate } from "@/lib/telegram";
 
 export async function POST(request: Request) {
   try {
-    // Проверяем секрет webhook
-    const secret = request.headers.get("x-telegram-bot-api-secret-token");
-    if (secret !== process.env.TELEGRAM_WEBHOOK_SECRET) {
-      return NextResponse.json(
-        { error: "Invalid webhook secret" },
-        { status: 401 },
-      );
-    }
+    // Проверяем наличие всех необходимых переменных окружения
+    validateEnvVariables();
 
     const update = await request.json();
-    const result = await handleTelegramUpdate(update);
 
-    if (result.error) {
-      console.error("Error handling Telegram update:", result.error);
-      return NextResponse.json({ error: result.error }, { status: 500 });
-    }
+    const { supabaseUrl, supabaseKey } = getSupabaseConfig();
+    const supabase = createClient(supabaseUrl, supabaseKey);
+
+    // Обрабатываем обновление от Telegram
+    await handleTelegramUpdate(update, supabase);
 
     return NextResponse.json({ success: true });
   } catch (error) {
-    console.error("Error in webhook route:", error);
+    console.error("Error in Telegram webhook:", error);
     return NextResponse.json(
-      { error: "Internal server error" },
-      { status: 500 },
+      { error: "Failed to process Telegram update" },
+      { status: 500 }
     );
   }
 }
