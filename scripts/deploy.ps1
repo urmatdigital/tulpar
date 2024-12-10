@@ -51,6 +51,35 @@ function Test-DockerImage {
     }
 }
 
+# Function to get Docker image build time
+function Get-DockerImageBuildTime {
+    param([string]$ImageName)
+    try {
+        $created = docker inspect -f '{{.Created}}' $ImageName 2>$null
+        if ($created) {
+            return [DateTime]::Parse($created)
+        }
+    }
+    catch {
+        Write-ColorOutput Yellow "Could not get Docker image build time: $_"
+    }
+    return $null
+}
+
+# Function to get last Git commit time
+function Get-LastGitCommitTime {
+    try {
+        $commitTime = git log -1 --format=%cd --date=iso-strict 2>$null
+        if ($commitTime) {
+            return [DateTime]::Parse($commitTime)
+        }
+    }
+    catch {
+        Write-ColorOutput Yellow "Could not get last Git commit time: $_"
+    }
+    return $null
+}
+
 # Load environment variables from .env.production
 Write-ColorOutput Green "Loading environment variables..."
 $envFile = Join-Path $PSScriptRoot "../.env.production"
@@ -200,15 +229,30 @@ try {
     exit 1
 }
 
-# Check if we need to rebuild the image
-$needRebuild = $true
+# Check if we need to rebuild Docker image
+Write-ColorOutput Green "Checking if Docker image needs to be rebuilt..."
 if (Test-DockerImage "tulparexpress:latest") {
-    $lastBuildTime = docker inspect -f '{{.Created}}' tulparexpress:latest
-    $lastCommitTime = git log -1 --format=%cd --date=iso
-    if ([DateTime]::Parse($lastBuildTime) -gt [DateTime]::Parse($lastCommitTime)) {
-        Write-ColorOutput Yellow "Docker image is up to date, skipping build..."
-        $needRebuild = $false
+    $lastBuildTime = Get-DockerImageBuildTime "tulparexpress:latest"
+    $lastCommitTime = Get-LastGitCommitTime
+
+    if ($lastBuildTime -and $lastCommitTime) {
+        if ($lastBuildTime -gt $lastCommitTime) {
+            Write-ColorOutput Yellow "Docker image is up to date, skipping build..."
+            $skipBuild = $true
+        }
+        else {
+            Write-ColorOutput Yellow "Docker image is outdated, rebuilding..."
+            $skipBuild = $false
+        }
     }
+    else {
+        Write-ColorOutput Yellow "Could not determine image freshness, rebuilding to be safe..."
+        $skipBuild = $false
+    }
+}
+else {
+    Write-ColorOutput Yellow "Docker image not found, building..."
+    $skipBuild = $false
 }
 
 if (-not $skipDeploy) {
