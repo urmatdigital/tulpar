@@ -1,7 +1,16 @@
-import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
+import { createClient } from "@supabase/supabase-js";
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { sendTelegramMessage } from "@/lib/telegram";
+
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const supabaseKey = process.env.SUPABASE_SECRET_KEY;
+
+if (!supabaseUrl || !supabaseKey) {
+  throw new Error("Missing Supabase environment variables");
+}
+
+const supabase = createClient(supabaseUrl, supabaseKey);
 
 export async function POST(request: Request) {
   try {
@@ -13,8 +22,6 @@ export async function POST(request: Request) {
         { status: 400 },
       );
     }
-
-    const supabase = createRouteHandlerClient({ cookies });
 
     // Генерируем 4-значный код
     const code = Math.floor(1000 + Math.random() * 9000).toString();

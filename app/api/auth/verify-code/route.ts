@@ -1,6 +1,15 @@
-import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
+import { createClient } from "@supabase/supabase-js";
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
+
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const supabaseKey = process.env.SUPABASE_SECRET_KEY;
+
+if (!supabaseUrl || !supabaseKey) {
+  throw new Error("Missing Supabase environment variables");
+}
+
+const supabase = createClient(supabaseUrl, supabaseKey);
 
 export async function POST(request: Request) {
   try {
@@ -12,8 +21,6 @@ export async function POST(request: Request) {
         { status: 400 },
       );
     }
-
-    const supabase = createRouteHandlerClient({ cookies });
 
     // Проверяем код верификации
     const { data: verificationData, error: verificationError } = await supabase
@@ -52,21 +59,20 @@ export async function POST(request: Request) {
     }
 
     // Создаем сессию пользователя
-    const { data: sessionData, error: sessionError } =
-      await supabase.auth.signUp({
-        email: `${userData.telegram_id}@te.kg`,
-        password: process.env.SUPABASE_USER_PASSWORD + userData.telegram_id,
-        phone: phone,
-        options: {
-          data: {
-            telegram_id: userData.telegram_id,
-            first_name: userData.first_name,
-            last_name: userData.last_name,
-            username: userData.username,
-            phone: phone,
-          },
+    const { data: sessionData, error: sessionError } = await supabase.auth.signUp({
+      email: `${userData.telegram_id}@te.kg`,
+      password: process.env.SUPABASE_USER_PASSWORD + userData.telegram_id,
+      phone: phone,
+      options: {
+        data: {
+          telegram_id: userData.telegram_id,
+          first_name: userData.first_name,
+          last_name: userData.last_name,
+          username: userData.username,
+          phone: phone,
         },
-      });
+      },
+    });
 
     if (sessionError) {
       console.error("Session error:", sessionError);
