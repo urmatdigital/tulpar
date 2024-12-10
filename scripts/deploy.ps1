@@ -3,17 +3,6 @@ $OutputEncoding = [System.Text.UTF8Encoding]::new()
 [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new()
 [Console]::InputEncoding = [System.Text.UTF8Encoding]::new()
 
-# Load environment variables from .env.production
-Write-ColorOutput Green "Loading environment variables..."
-Get-Content .env.production | ForEach-Object {
-    if ($_ -match '^([^=]+)=(.*)$') {
-        $key = $matches[1]
-        $value = $matches[2]
-        [Environment]::SetEnvironmentVariable($key, $value)
-        Set-Item -Path "env:$key" -Value $value
-    }
-}
-
 # Function to write colored output
 function Write-ColorOutput {
     param([System.ConsoleColor]$ForegroundColor)
@@ -26,6 +15,17 @@ function Write-ColorOutput {
     }
     
     $host.UI.RawUI.ForegroundColor = $fc
+}
+
+# Load environment variables from .env.production
+Write-ColorOutput Green "Loading environment variables..."
+Get-Content .env.production | ForEach-Object {
+    if ($_ -match '^([^=]+)=(.*)$') {
+        $key = $matches[1]
+        $value = $matches[2]
+        [Environment]::SetEnvironmentVariable($key, $value)
+        Set-Item -Path "env:$key" -Value $value
+    }
 }
 
 # Check for git changes
