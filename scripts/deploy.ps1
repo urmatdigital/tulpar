@@ -50,20 +50,60 @@ if ($status) {
 Write-ColorOutput Green "Pushing changes to repository..."
 git push origin main
 
+# Function to get project hash
+function Get-ProjectHash {
+    $hashSource = (Get-ChildItem -Recurse -Include *.ts,*.tsx,*.js,*.jsx,*.json,*.css,*.scss,Dockerfile) | 
+        Where-Object { $_.FullName -notmatch 'node_modules|\.next|\.git' } | 
+        Get-FileHash | Select-Object -ExpandProperty Hash
+    return ($hashSource | Sort-Object) -join ''
+}
+
+# Function to reset Docker container
+function Reset-DockerContainer {
+    Write-ColorOutput Yellow "Пересоздаем Docker контейнер..."
+    try {
+        # Останавливаем и удаляем существующие контейнеры
+        docker ps -aq | ForEach-Object { docker stop $_; docker rm $_ }
+        # Удаляем все образы
+        docker images -q | ForEach-Object { docker rmi $_ -f }
+        # Сбрасываем Docker daemon
+        net stop com.docker.service
+        Start-Sleep -Seconds 2
+        net start com.docker.service
+        Start-Sleep -Seconds 5
+        Write-ColorOutput Green "Docker контейнер успешно пересоздан!"
+        return $true
+    }
+    catch {
+        Write-ColorOutput Red "Ошибка при пересоздании контейнера: $_"
+        return $false
+    }
+}
+
+# Check project state and caching
+$cacheFile = ".deploy-cache"
+$currentHash = Get-ProjectHash
+$skipDeploy = $false
+
+if (Test-Path $cacheFile) {
+    $cachedHash = Get-Content $cacheFile
+    if ($cachedHash -eq $currentHash) {
+        Write-ColorOutput Yellow "Изменений в проекте не обнаружено. Пропускаем сборку."
+        $skipDeploy = $true
+    }
+}
+
 # Check Docker installation and start if needed
 Write-ColorOutput Green "Checking Docker..."
 try {
     # Проверяем, установлен ли Docker
     if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
         Write-ColorOutput Yellow "Docker not installed. Installing Docker Desktop..."
-        # Скачиваем и устанавливаем Docker Desktop
         $dockerInstaller = "DockerDesktopInstaller.exe"
         Invoke-WebRequest "https://desktop.docker.com/win/stable/Docker%20Desktop%20Installer.exe" -OutFile $dockerInstaller
         Start-Process $dockerInstaller -Wait -ArgumentList "install --quiet"
         Remove-Item $dockerInstaller
         Write-ColorOutput Green "Docker Desktop installed successfully!"
-        
-        # Даем время на инициализацию сервиса
         Start-Sleep -Seconds 10
     }
 
@@ -72,17 +112,17 @@ try {
     if ($LASTEXITCODE -ne 0) {
         Write-ColorOutput Yellow "Docker is not running. Starting Docker..."
         Start-Process "C:\Program Files\Docker\Docker\Docker Desktop.exe"
-        # Ждем 10 секунд для запуска
         Start-Sleep -Seconds 10
     }
 
     # Финальная проверка
     docker info >$null 2>&1
-    if ($?) {
-        Write-ColorOutput Green "Docker is running and ready!"
-    } else {
-        throw "Docker is not responding"
+    if (-not $?) {
+        if (-not (Reset-DockerContainer)) {
+            throw "Не удалось восстановить работу Docker"
+        }
     }
+    Write-ColorOutput Green "Docker is running and ready!"
 } catch {
     Write-ColorOutput Red "Error with Docker: $_"
     exit 1
@@ -99,7 +139,7 @@ if (Test-DockerImage "tulparexpress:latest") {
     }
 }
 
-if ($needRebuild) {
+if (-not $skipDeploy) {
     # Build Docker image with public environment variables
     Write-ColorOutput Green "Building Docker image..."
     $buildArgs = @(
@@ -113,6 +153,9 @@ if ($needRebuild) {
     $buildCommand = "docker build --no-cache $buildArgs -t tulparexpress ."
     Write-ColorOutput Yellow "Running build command: $buildCommand"
     Invoke-Expression $buildCommand
+
+    # Сохраняем хэш текущего состояния
+    $currentHash | Set-Content $cacheFile
 }
 
 # Check Railway CLI
@@ -127,9 +170,11 @@ Write-ColorOutput Green "Deploying to Railway..."
 $env:RAILWAY_TOKEN = $envVars['RAILWAY_TOKEN']
 
 try {
-    # Deploy the application
-    Write-ColorOutput Green "Deploying application..."
-    railway up --detach
+    if (-not $skipDeploy) {
+        # Deploy the application
+        Write-ColorOutput Green "Deploying application..."
+        railway up --detach
+    }
 
     # Configure Telegram webhook
     Write-ColorOutput Green "Setting up Telegram webhook..."
