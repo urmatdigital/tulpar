@@ -50,32 +50,41 @@ if ($status) {
 Write-ColorOutput Green "Pushing changes to repository..."
 git push origin main
 
-# Check Docker installation and wait for it to start
+# Check Docker installation and start if needed
 Write-ColorOutput Green "Checking Docker..."
-$maxAttempts = 30
-$attempt = 0
-$dockerRunning = $false
-
-while (-not $dockerRunning -and $attempt -lt $maxAttempts) {
-    try {
-        docker info >$null 2>&1
-        if ($?) {
-            $dockerRunning = $true
-            Write-ColorOutput Green "Docker is running!"
-        } else {
-            $attempt++
-            Write-ColorOutput Yellow "Waiting for Docker to start... (Attempt $attempt/$maxAttempts)"
-            Start-Sleep -Seconds 2
-        }
-    } catch {
-        $attempt++
-        Write-ColorOutput Yellow "Docker is not ready... (Attempt $attempt/$maxAttempts)"
-        Start-Sleep -Seconds 2
+try {
+    # Проверяем, установлен ли Docker
+    if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
+        Write-ColorOutput Yellow "Docker not installed. Installing Docker Desktop..."
+        # Скачиваем и устанавливаем Docker Desktop
+        $dockerInstaller = "DockerDesktopInstaller.exe"
+        Invoke-WebRequest "https://desktop.docker.com/win/stable/Docker%20Desktop%20Installer.exe" -OutFile $dockerInstaller
+        Start-Process $dockerInstaller -Wait -ArgumentList "install --quiet"
+        Remove-Item $dockerInstaller
+        Write-ColorOutput Green "Docker Desktop installed successfully!"
+        
+        # Даем время на инициализацию сервиса
+        Start-Sleep -Seconds 10
     }
-}
 
-if (-not $dockerRunning) {
-    Write-ColorOutput Red "Docker failed to start after $maxAttempts attempts!"
+    # Проверяем статус Docker
+    $dockerInfo = docker info 2>&1
+    if ($LASTEXITCODE -ne 0) {
+        Write-ColorOutput Yellow "Docker is not running. Starting Docker..."
+        Start-Process "C:\Program Files\Docker\Docker\Docker Desktop.exe"
+        # Ждем 10 секунд для запуска
+        Start-Sleep -Seconds 10
+    }
+
+    # Финальная проверка
+    docker info >$null 2>&1
+    if ($?) {
+        Write-ColorOutput Green "Docker is running and ready!"
+    } else {
+        throw "Docker is not responding"
+    }
+} catch {
+    Write-ColorOutput Red "Error with Docker: $_"
     exit 1
 }
 
