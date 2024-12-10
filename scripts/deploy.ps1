@@ -50,16 +50,32 @@ if ($status) {
 Write-ColorOutput Green "Pushing changes to repository..."
 git push origin main
 
-# Check Docker installation
+# Check Docker installation and wait for it to start
 Write-ColorOutput Green "Checking Docker..."
-try {
-    docker info >$null 2>&1
-    if (-not $?) {
-        Write-ColorOutput Red "Docker is not running!"
-        exit 1
+$maxAttempts = 30
+$attempt = 0
+$dockerRunning = $false
+
+while (-not $dockerRunning -and $attempt -lt $maxAttempts) {
+    try {
+        docker info >$null 2>&1
+        if ($?) {
+            $dockerRunning = $true
+            Write-ColorOutput Green "Docker is running!"
+        } else {
+            $attempt++
+            Write-ColorOutput Yellow "Waiting for Docker to start... (Attempt $attempt/$maxAttempts)"
+            Start-Sleep -Seconds 2
+        }
+    } catch {
+        $attempt++
+        Write-ColorOutput Yellow "Docker is not ready... (Attempt $attempt/$maxAttempts)"
+        Start-Sleep -Seconds 2
     }
-} catch {
-    Write-ColorOutput Red "Docker is not installed!"
+}
+
+if (-not $dockerRunning) {
+    Write-ColorOutput Red "Docker failed to start after $maxAttempts attempts!"
     exit 1
 }
 
