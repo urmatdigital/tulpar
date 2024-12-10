@@ -1,9 +1,9 @@
-# Устанавливаем кодировку UTF-8 без BOM
+# Set UTF-8 encoding
 $OutputEncoding = [System.Text.UTF8Encoding]::new()
 [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new()
 [Console]::InputEncoding = [System.Text.UTF8Encoding]::new()
 
-# Функция для вывода сообщений с цветом
+# Function to write colored output
 function Write-ColorOutput {
     param([System.ConsoleColor]$ForegroundColor)
     
@@ -17,51 +17,51 @@ function Write-ColorOutput {
     $host.UI.RawUI.ForegroundColor = $fc
 }
 
-# Проверяем наличие изменений в git
-Write-ColorOutput Green "Проверка изменений в git..."
+# Check for git changes
+Write-ColorOutput Green "Checking git changes..."
 $status = git status --porcelain
 if ($status) {
-    Write-ColorOutput Yellow "Найдены изменения, выполняем commit..."
+    Write-ColorOutput Yellow "Changes found, committing..."
     git add .
-    git commit -m "Автоматический деплой: $(Get-Date -Format 'yyyy-MM-dd HH:mm')"
+    git commit -m "Auto deploy: $(Get-Date -Format 'yyyy-MM-dd HH:mm')"
 }
 
-# Пушим изменения в репозиторий
-Write-ColorOutput Green "Отправка изменений в репозиторий..."
+# Push changes to repository
+Write-ColorOutput Green "Pushing changes to repository..."
 git push origin main
 
-# Проверяем наличие Docker
-Write-ColorOutput Green "Проверка Docker..."
+# Check Docker installation
+Write-ColorOutput Green "Checking Docker..."
 if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
-    Write-ColorOutput Red "Docker не установлен!"
+    Write-ColorOutput Red "Docker is not installed!"
     exit 1
 }
 
-# Собираем Docker образ
-Write-ColorOutput Green "Сборка Docker образа..."
+# Build Docker image
+Write-ColorOutput Green "Building Docker image..."
 docker build -t tulparexpress .
 
-# Устанавливаем webhook для Telegram бота
-Write-ColorOutput Green "Настройка webhook для Telegram бота..."
+# Set up Telegram webhook
+Write-ColorOutput Green "Setting up Telegram webhook..."
 $botToken = $env:TELEGRAM_BOT_TOKEN
 $webhookUrl = "https://te.kg/api/telegram/webhook"
 $response = Invoke-RestMethod -Uri "https://api.telegram.org/bot$botToken/setWebhook?url=$webhookUrl" -Method Get
 
 if ($response.ok) {
-    Write-ColorOutput Green "Webhook успешно установлен"
+    Write-ColorOutput Green "Webhook set successfully"
 } else {
-    Write-ColorOutput Red "Ошибка установки webhook: $($response.description)"
+    Write-ColorOutput Red "Error setting webhook: $($response.description)"
 }
 
-# Проверяем наличие Railway CLI
-Write-ColorOutput Green "Проверка Railway CLI..."
+# Check Railway CLI
+Write-ColorOutput Green "Checking Railway CLI..."
 if (-not (Get-Command railway -ErrorAction SilentlyContinue)) {
-    Write-ColorOutput Yellow "Railway CLI не установлен, устанавливаем..."
+    Write-ColorOutput Yellow "Railway CLI not found, installing..."
     npm i -g @railway/cli
 }
 
-# Деплоим на Railway
-Write-ColorOutput Green "Деплой на Railway..."
+# Deploy to Railway
+Write-ColorOutput Green "Deploying to Railway..."
 railway up
 
-Write-ColorOutput Green "Деплой завершен! Приложение доступно по адресу: https://te.kg"
+Write-ColorOutput Green "Deploy completed! App is available at: https://te.kg"
