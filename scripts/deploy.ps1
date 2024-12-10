@@ -17,6 +17,13 @@ function Write-ColorOutput {
     $host.UI.RawUI.ForegroundColor = $fc
 }
 
+# Function to check if Docker image exists
+function Test-DockerImage {
+    param([string]$ImageName)
+    $image = docker images -q $ImageName 2>$null
+    return ![string]::IsNullOrEmpty($image)
+}
+
 # Load environment variables from .env.production
 Write-ColorOutput Green "Loading environment variables..."
 $envVars = @{}
@@ -45,7 +52,13 @@ git push origin main
 
 # Check Docker installation
 Write-ColorOutput Green "Checking Docker..."
-if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
+try {
+    docker info >$null 2>&1
+    if (-not $?) {
+        Write-ColorOutput Red "Docker is not running!"
+        exit 1
+    }
+} catch {
     Write-ColorOutput Red "Docker is not installed!"
     exit 1
 }
