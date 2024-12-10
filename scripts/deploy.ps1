@@ -256,19 +256,20 @@ else {
 }
 
 if (-not $skipDeploy) {
-    # Build Docker image with public environment variables
-    Write-ColorOutput Green "Building Docker image..."
-    $buildArgs = @(
-        "--build-arg", "NEXT_PUBLIC_APP_URL=$($envVars['NEXT_PUBLIC_APP_URL'])",
-        "--build-arg", "NEXT_PUBLIC_TELEGRAM_BOT_USERNAME=$($envVars['NEXT_PUBLIC_TELEGRAM_BOT_USERNAME'])",
-        "--build-arg", "PORT=$($envVars['PORT'])"
-    )
-
-    # Используем Docker BuildKit для ускорения сборки
-    $env:DOCKER_BUILDKIT = 1
-    $buildCommand = "docker build --no-cache $buildArgs -t tulparexpress ."
-    Write-ColorOutput Yellow "Running build command: $buildCommand"
-    Invoke-Expression $buildCommand
+    # Build Docker image
+    if (-not $skipBuild) {
+        Write-ColorOutput Green "Running build command: docker build --no-cache --build-arg NEXT_PUBLIC_APP_URL=https://te.kg --build-arg NEXT_PUBLIC_TELEGRAM_BOT_USERNAME=@tekg_bot --build-arg PORT=3000 -t tulparexpress ."
+        docker build --no-cache `
+            --build-arg NEXT_PUBLIC_APP_URL=https://te.kg `
+            --build-arg NEXT_PUBLIC_TELEGRAM_BOT_USERNAME=@tekg_bot `
+            --build-arg PORT=3000 `
+            -t tulparexpress .
+        
+        if ($LASTEXITCODE -ne 0) {
+            Write-ColorOutput Red "Docker build failed!"
+            exit 1
+        }
+    }
 
     # Сохраняем хэш текущего состояния
     $currentHash | Set-Content $cacheFile
