@@ -3,6 +3,17 @@ $OutputEncoding = [System.Text.UTF8Encoding]::new()
 [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new()
 [Console]::InputEncoding = [System.Text.UTF8Encoding]::new()
 
+# Load environment variables from .env.production
+Write-ColorOutput Green "Loading environment variables..."
+Get-Content .env.production | ForEach-Object {
+    if ($_ -match '^([^=]+)=(.*)$') {
+        $key = $matches[1]
+        $value = $matches[2]
+        [Environment]::SetEnvironmentVariable($key, $value)
+        Set-Item -Path "env:$key" -Value $value
+    }
+}
+
 # Function to write colored output
 function Write-ColorOutput {
     param([System.ConsoleColor]$ForegroundColor)
@@ -44,13 +55,17 @@ docker build -t tulparexpress .
 # Set up Telegram webhook
 Write-ColorOutput Green "Setting up Telegram webhook..."
 $botToken = $env:TELEGRAM_BOT_TOKEN
+Write-ColorOutput Yellow "Using bot token: $botToken"
 $webhookUrl = "https://te.kg/api/telegram/webhook"
-$response = Invoke-RestMethod -Uri "https://api.telegram.org/bot$botToken/setWebhook?url=$webhookUrl" -Method Get
-
-if ($response.ok) {
-    Write-ColorOutput Green "Webhook set successfully"
-} else {
-    Write-ColorOutput Red "Error setting webhook: $($response.description)"
+try {
+    $response = Invoke-RestMethod -Uri "https://api.telegram.org/bot$botToken/setWebhook?url=$webhookUrl" -Method Get
+    if ($response.ok) {
+        Write-ColorOutput Green "Webhook set successfully"
+    } else {
+        Write-ColorOutput Red "Error setting webhook: $($response.description)"
+    }
+} catch {
+    Write-ColorOutput Red "Failed to set webhook: $_"
 }
 
 # Check Railway CLI
