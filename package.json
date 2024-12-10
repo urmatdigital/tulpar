@@ -14,7 +14,8 @@
     "check-db": "npx tsx scripts/check-db.ts",
     "execute-sql": "npx tsx scripts/execute-sql-pg.ts",
     "clean": "powershell -ExecutionPolicy Bypass -File ./scripts/clean.ps1",
-    "stop": "powershell -ExecutionPolicy Bypass -File ./scripts/stop.ps1"
+    "stop": "powershell -ExecutionPolicy Bypass -File ./scripts/stop.ps1",
+    "deploy": "powershell -ExecutionPolicy Bypass -File ./scripts/deploy.ps1"
   },
   "dependencies": {
     "@nextui-org/button": "2.2.3",

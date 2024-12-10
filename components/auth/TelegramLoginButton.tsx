@@ -51,6 +51,10 @@ export const TelegramLoginButton = ({
   return (
     <div>
       <Button
+        as="a"
+        href={`https://t.me/${botUsername.replace('@', '')}`}
+        target="_blank"
+        rel="noopener noreferrer"
         variant="flat"
         color="primary"
         startContent={<TelegramIcon />}

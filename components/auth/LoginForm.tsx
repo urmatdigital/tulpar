@@ -24,13 +24,13 @@ export function LoginForm({ onSubmit }: LoginFormProps) {
     
     try {
       const formattedPhone = formatPhoneNumber(phone);
-      const botUsername = process.env.NEXT_PUBLIC_TELEGRAM_BOT_USERNAME;
+      const botUsername = process.env.NEXT_PUBLIC_TELEGRAM_BOT_USERNAME?.replace('@', '');
       
       if (!botUsername) {
         throw new Error("Ошибка конфигурации: имя бота не задано");
       }
 
-      // Формируем URL для бота
+      // Формируем URL для бота с автозапуском
       const startParam = encodeURIComponent(`register_${formattedPhone}`);
       const botUrl = `https://t.me/${botUsername}?start=${startParam}`;
       
