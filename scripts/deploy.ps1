@@ -17,20 +17,6 @@ function Write-ColorOutput {
     $host.UI.RawUI.ForegroundColor = $fc
 }
 
-# Function to check if Docker image exists
-function Test-DockerImage {
-    param([string]$ImageName)
-    $image = docker images -q $ImageName
-    return ![string]::IsNullOrEmpty($image)
-}
-
-# Function to check if container exists
-function Test-DockerContainer {
-    param([string]$ContainerName)
-    $container = docker ps -a -q -f name=$ContainerName
-    return ![string]::IsNullOrEmpty($container)
-}
-
 # Load environment variables from .env.production
 Write-ColorOutput Green "Loading environment variables..."
 $envVars = @{}
@@ -91,51 +77,23 @@ if ($needRebuild) {
     Invoke-Expression $buildCommand
 }
 
-# Check Railway CLI and login status
+# Check Railway CLI
 Write-ColorOutput Green "Checking Railway CLI..."
 if (-not (Get-Command railway -ErrorAction SilentlyContinue)) {
     Write-ColorOutput Yellow "Railway CLI not found, installing..."
     npm i -g @railway/cli
 }
 
-# Deploy to Railway with progress tracking
+# Deploy to Railway
 Write-ColorOutput Green "Deploying to Railway..."
-$deploymentStart = Get-Date
 $env:RAILWAY_TOKEN = $envVars['RAILWAY_TOKEN']
 
 try {
-    # Используем параллельное выполнение где возможно
-    $jobs = @()
-
-    # Устанавливаем переменные окружения параллельно
-    Write-ColorOutput Green "Setting up Railway variables..."
-    $secretVars = @(
-        "NEXT_PUBLIC_SUPABASE_URL",
-        "NEXT_PUBLIC_SUPABASE_ANON_KEY",
-        "SUPABASE_SECRET_KEY",
-        "SUPABASE_JWT_SECRET",
-        "DATABASE_URL",
-        "TELEGRAM_BOT_TOKEN",
-        "TELEGRAM_WEBHOOK_SECRET",
-        "TELEGRAM_USER_SECRET"
-    )
-
-    foreach ($key in $secretVars) {
-        if ($envVars.ContainsKey($key)) {
-            $jobs += Start-Job -ScriptBlock {
-                param($key, $value)
-                railway variables set "$key=$value"
-            } -ArgumentList $key, $envVars[$key]
-        }
-    }
-
-    # Ждем завершения всех задач
-    $jobs | Wait-Job | Receive-Job
-
-    # Деплоим приложение
+    # Deploy the application
+    Write-ColorOutput Green "Deploying application..."
     railway up --detach
 
-    # Настраиваем webhook для Telegram
+    # Configure Telegram webhook
     Write-ColorOutput Green "Setting up Telegram webhook..."
     $botToken = $envVars['TELEGRAM_BOT_TOKEN']
     $webhookUrl = "https://te.kg/api/telegram/webhook"
@@ -147,9 +105,7 @@ try {
         Write-ColorOutput Red "Error setting webhook: $($response.description)"
     }
 
-    $deploymentDuration = (Get-Date) - $deploymentStart
-    Write-ColorOutput Green "Deploy completed in $($deploymentDuration.TotalSeconds) seconds!"
-    Write-ColorOutput Green "App is available at: https://te.kg"
+    Write-ColorOutput Green "Deploy completed! App is available at: https://te.kg"
 } catch {
     Write-ColorOutput Red "Deployment failed: $_"
     exit 1
