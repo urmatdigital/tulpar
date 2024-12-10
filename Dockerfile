@@ -29,8 +29,22 @@ ENV NEXT_TELEMETRY_DISABLED=1
 # Собираем приложение
 RUN npm run build
 
+# Создаем отдельный образ для production
+FROM node:18-alpine AS runner
+
+WORKDIR /app
+
+# Копируем необходимые файлы из builder
+COPY --from=builder /app/.next/standalone ./
+COPY --from=builder /app/.next/static ./.next/static
+COPY --from=builder /app/public ./public
+
+# Устанавливаем переменные окружения
+ENV PORT=${PORT}
+ENV NODE_ENV=production
+
 # Открываем порт
 EXPOSE ${PORT}
 
 # Запускаем приложение
-CMD ["npm", "start"]
+CMD ["node", "server.js"]

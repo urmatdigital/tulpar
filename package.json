@@ -15,7 +15,8 @@
     "execute-sql": "npx tsx scripts/execute-sql-pg.ts",
     "clean": "powershell -ExecutionPolicy Bypass -File ./scripts/clean.ps1",
     "stop": "powershell -ExecutionPolicy Bypass -File ./scripts/stop.ps1",
-    "deploy": "powershell -ExecutionPolicy Bypass -File ./scripts/deploy.ps1"
+    "deploy": "powershell -ExecutionPolicy Bypass -File ./scripts/deploy.ps1",
+    "docker:dev": "powershell -ExecutionPolicy Bypass -File ./scripts/dev.ps1"
   },
   "dependencies": {
     "@nextui-org/button": "2.2.3",
