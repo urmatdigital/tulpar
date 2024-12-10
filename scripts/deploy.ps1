@@ -159,6 +159,49 @@ function Get-ProjectHash {
     }
 }
 
+# Function to stop and remove containers
+function Reset-DockerContainers {
+    param(
+        [string]$ImageName
+    )
+    Write-ColorOutput Green "Cleaning up old containers..."
+    
+    # Получаем список всех контейнеров (включая остановленные) с нашим image
+    $containers = docker ps -a --filter "ancestor=$ImageName" --format "{{.ID}}"
+    
+    if ($containers) {
+        Write-ColorOutput Yellow "Found existing containers, removing..."
+        foreach ($containerId in $containers) {
+            # Останавливаем контейнер если он запущен
+            docker stop $containerId 2>$null
+            # Удаляем контейнер
+            docker rm $containerId 2>$null
+        }
+    }
+}
+
+# Function to run new container
+function Start-DockerContainer {
+    param(
+        [string]$ImageName,
+        [string]$ContainerName,
+        [int]$Port
+    )
+    Write-ColorOutput Green "Starting new container..."
+    
+    # Запускаем новый контейнер
+    docker run -d `
+        --name $ContainerName `
+        -p "${Port}:3000" `
+        --restart unless-stopped `
+        $ImageName
+
+    if ($LASTEXITCODE -ne 0) {
+        Write-ColorOutput Red "Failed to start container!"
+        exit 1
+    }
+}
+
 # Function to reset Docker container
 function Reset-DockerContainer {
     Write-ColorOutput Yellow "Пересоздаем Docker контейнер..."
@@ -270,6 +313,10 @@ if (-not $skipDeploy) {
             exit 1
         }
     }
+
+    # Очищаем старые контейнеры и запускаем новый
+    Reset-DockerContainers "tulparexpress"
+    Start-DockerContainer -ImageName "tulparexpress" -ContainerName "tulparexpress" -Port 3000
 
     # Сохраняем хэш текущего состояния
     $currentHash | Set-Content $cacheFile
