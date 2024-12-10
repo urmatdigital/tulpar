@@ -2,6 +2,17 @@
 $OutputEncoding = [System.Text.UTF8Encoding]::new()
 [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new()
 [Console]::InputEncoding = [System.Text.UTF8Encoding]::new()
+[System.Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+
+# Check if running as administrator
+$currentPrincipal = New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())
+$isAdmin = $currentPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+
+if (-not $isAdmin) {
+    Write-Host "This script requires administrator privileges. Restarting with elevated permissions..."
+    Start-Process powershell -Verb RunAs -ArgumentList "-NoProfile -ExecutionPolicy Bypass -File `"$PSCommandPath`"" -Wait
+    exit
+}
 
 # Function to write colored output
 function Write-ColorOutput {
@@ -17,45 +28,106 @@ function Write-ColorOutput {
     $host.UI.RawUI.ForegroundColor = $fc
 }
 
+# Function to check Docker installation
+function Test-DockerInstallation {
+    try {
+        $null = Get-Command docker -ErrorAction Stop
+        return $true
+    }
+    catch {
+        return $false
+    }
+}
+
 # Function to check if Docker image exists
 function Test-DockerImage {
     param([string]$ImageName)
-    $image = docker images -q $ImageName 2>$null
-    return ![string]::IsNullOrEmpty($image)
+    try {
+        $null = docker image inspect $ImageName 2>$null
+        return $true
+    }
+    catch {
+        return $false
+    }
 }
 
 # Load environment variables from .env.production
 Write-ColorOutput Green "Loading environment variables..."
-$envVars = @{}
-Get-Content .env.production | ForEach-Object {
-    if ($_ -match '^([^=]+)=(.*)$') {
-        $key = $matches[1]
-        $value = $matches[2]
-        $envVars[$key] = $value
-        [Environment]::SetEnvironmentVariable($key, $value)
-        Set-Item -Path "env:$key" -Value $value
+$envFile = Join-Path $PSScriptRoot "../.env.production"
+
+if (Test-Path $envFile) {
+    $envVars = @{}
+    Get-Content $envFile | ForEach-Object {
+        if ($_ -match '^\s*([^#][^=]+)=(.*)$') {
+            $key = $matches[1].Trim()
+            $value = $matches[2].Trim()
+            $envVars[$key] = $value
+            [Environment]::SetEnvironmentVariable($key, $value)
+            Set-Item -Path "env:$key" -Value $value
+        }
+    }
+} else {
+    Write-ColorOutput Yellow "Warning: .env.production file not found at $envFile"
+    Write-ColorOutput Yellow "Continuing with deployment using existing environment variables..."
+}
+
+# Initialize Git if not already initialized
+Write-ColorOutput Green "Checking Git repository..."
+$projectRoot = Join-Path $PSScriptRoot ".."
+Set-Location $projectRoot
+
+if (-not (Test-Path ".git")) {
+    Write-ColorOutput Yellow "Git repository not found. Initializing..."
+    git init
+    git add .
+    git commit -m "Initial commit"
+    
+    # Ask for remote repository
+    $remoteExists = git remote -v
+    if (-not $remoteExists) {
+        Write-ColorOutput Yellow "No remote repository found."
+        Write-ColorOutput Yellow "Please add a remote repository manually using:"
+        Write-ColorOutput Yellow "git remote add origin <your-repository-url>"
+    }
+} else {
+    # Check for git changes
+    Write-ColorOutput Green "Checking git changes..."
+    $changes = git status --porcelain
+    if ($changes) {
+        git add .
+        git commit -m "Automatic deployment commit"
+        
+        # Try to push changes
+        Write-ColorOutput Green "Pushing changes to repository..."
+        $pushResult = git push origin main 2>&1
+        if ($LASTEXITCODE -ne 0) {
+            Write-ColorOutput Yellow "Warning: Could not push changes: $pushResult"
+            Write-ColorOutput Yellow "Continuing with deployment..."
+        }
+    } else {
+        Write-ColorOutput Green "No changes detected in the project. Skipping build..."
     }
 }
 
-# Check for git changes
-Write-ColorOutput Green "Checking git changes..."
-$status = git status --porcelain
-if ($status) {
-    Write-ColorOutput Yellow "Changes found, committing..."
-    git add .
-    git commit -m "Auto deploy: $(Get-Date -Format 'yyyy-MM-dd HH:mm')"
-}
-
-# Push changes to repository
-Write-ColorOutput Green "Pushing changes to repository..."
-git push origin main
-
 # Function to get project hash
 function Get-ProjectHash {
-    $hashSource = (Get-ChildItem -Recurse -Include *.ts,*.tsx,*.js,*.jsx,*.json,*.css,*.scss,Dockerfile) | 
-        Where-Object { $_.FullName -notmatch 'node_modules|\.next|\.git' } | 
-        Get-FileHash | Select-Object -ExpandProperty Hash
-    return ($hashSource | Sort-Object) -join ''
+    try {
+        $files = Get-ChildItem -Recurse -Include *.ts,*.tsx,*.js,*.jsx,*.json,*.css,*.scss,Dockerfile -ErrorAction Stop | 
+            Where-Object { $_.FullName -notmatch 'node_modules|\.next|\.git' }
+        
+        if ($null -eq $files) {
+            Write-ColorOutput Red "No source files found!"
+            return ""
+        }
+        
+        $hashSource = $files | Get-FileHash | Select-Object -ExpandProperty Hash
+        return ($hashSource | Sort-Object) -join ''
+    }
+    catch {
+        Write-ColorOutput Red "Error accessing files: $_"
+        Write-ColorOutput Yellow "Continuing with deployment..."
+        return ""
+    }
 }
 
 # Function to reset Docker container
@@ -97,7 +169,7 @@ if (Test-Path $cacheFile) {
 Write-ColorOutput Green "Checking Docker..."
 try {
     # Проверяем, установлен ли Docker
-    if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
+    if (-not (Test-DockerInstallation)) {
         Write-ColorOutput Yellow "Docker not installed. Installing Docker Desktop..."
         $dockerInstaller = "DockerDesktopInstaller.exe"
         Invoke-WebRequest "https://desktop.docker.com/win/stable/Docker%20Desktop%20Installer.exe" -OutFile $dockerInstaller
