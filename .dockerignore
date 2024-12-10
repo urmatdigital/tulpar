@@ -1,9 +1,30 @@
-Dockerfile
-.dockerignore
+# Dependencies
 node_modules
 npm-debug.log
-README.md
+yarn-debug.log
+yarn-error.log
+
+# Next.js
 .next
+out
+
+# Environment
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Version control
 .git
-.env*
-docker-compose.yml
+.gitignore
+
+# IDE
+.idea
+.vscode
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db

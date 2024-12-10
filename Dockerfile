@@ -1,51 +1,36 @@
-FROM node:18-alpine AS base
+# Используем Node.js как базовый образ
+FROM node:18-alpine
 
-# Install dependencies only when needed
-FROM base AS deps
-RUN apk add --no-cache libc6-compat
+# Устанавливаем рабочую директорию
 WORKDIR /app
 
-# Install dependencies based on the preferred package manager
-COPY package.json package-lock.json* ./
-RUN npm ci
+# Копируем package.json и package-lock.json
+COPY package*.json ./
 
-# Rebuild the source code only when needed
-FROM base AS builder
-WORKDIR /app
-COPY --from=deps /app/node_modules ./node_modules
+# Устанавливаем зависимости
+RUN npm install
+
+# Копируем исходный код
 COPY . .
 
-# Disable telemetry during the build
-ENV NEXT_TELEMETRY_DISABLED 1
+# Создаем .env файл из переменных окружения
+RUN echo "NEXT_PUBLIC_SUPABASE_URL=$NEXT_PUBLIC_SUPABASE_URL" >> .env && \
+    echo "NEXT_PUBLIC_SUPABASE_ANON_KEY=$NEXT_PUBLIC_SUPABASE_ANON_KEY" >> .env && \
+    echo "SUPABASE_SECRET_KEY=$SUPABASE_SECRET_KEY" >> .env && \
+    echo "DATABASE_URL=$DATABASE_URL" >> .env && \
+    echo "TELEGRAM_BOT_TOKEN=$TELEGRAM_BOT_TOKEN" >> .env && \
+    echo "TELEGRAM_WEBHOOK_SECRET=$TELEGRAM_WEBHOOK_SECRET" >> .env && \
+    echo "TELEGRAM_USER_SECRET=$TELEGRAM_USER_SECRET" >> .env && \
+    echo "NEXT_PUBLIC_TELEGRAM_BOT_USERNAME=$NEXT_PUBLIC_TELEGRAM_BOT_USERNAME" >> .env && \
+    echo "NEXT_PUBLIC_APP_URL=$NEXT_PUBLIC_APP_URL" >> .env && \
+    echo "FRONTEND_URL=$FRONTEND_URL" >> .env && \
+    echo "PORT=$PORT" >> .env
 
-# Build the application
+# Собираем приложение
 RUN npm run build
 
-# Production image, copy all the files and run next
-FROM base AS runner
-WORKDIR /app
-
-ENV NODE_ENV production
-ENV NEXT_TELEMETRY_DISABLED 1
-
-RUN addgroup --system --gid 1001 nodejs
-RUN adduser --system --uid 1001 nextjs
-
-COPY --from=builder /app/public ./public
-
-# Set the correct permission for prerender cache
-RUN mkdir .next
-RUN chown nextjs:nodejs .next
-
-# Automatically leverage output traces to reduce image size
-COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
-COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
-
-USER nextjs
-
+# Открываем порт
 EXPOSE 3000
 
-ENV PORT 3000
-ENV HOSTNAME "0.0.0.0"
-
-CMD ["node", "server.js"]
+# Запускаем приложение
+CMD ["npm", "start"]
