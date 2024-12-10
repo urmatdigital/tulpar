@@ -15,9 +15,8 @@ WORKDIR /app
 # Копируем файлы зависимостей
 COPY package.json package-lock.json* ./
 
-# Устанавливаем все зависимости, включая devDependencies
-RUN --mount=type=cache,target=/root/.npm \
-    npm ci
+# Устанавливаем все зависимости
+RUN npm ci
 
 FROM base AS builder
 WORKDIR /app
@@ -37,13 +36,10 @@ ENV NEXT_PUBLIC_TELEGRAM_BOT_USERNAME=${NEXT_PUBLIC_TELEGRAM_BOT_USERNAME}
 ENV PORT=${PORT}
 
 # Создаем postcss.config.js если его нет
-RUN if [ ! -f postcss.config.js ]; then \
-    echo "module.exports = { plugins: { tailwindcss: {}, autoprefixer: {}, } }" > postcss.config.js; \
-    fi
+RUN echo "module.exports={plugins:{tailwindcss:{},autoprefixer:{}}}" > postcss.config.js
 
 # Оптимизируем сборку
-RUN --mount=type=cache,target=/root/.npm \
-    npm run build
+RUN npm run build
 
 FROM base AS runner
 WORKDIR /app
