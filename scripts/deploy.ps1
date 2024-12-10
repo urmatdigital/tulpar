@@ -19,10 +19,12 @@ function Write-ColorOutput {
 
 # Load environment variables from .env.production
 Write-ColorOutput Green "Loading environment variables..."
+$envVars = @{}
 Get-Content .env.production | ForEach-Object {
     if ($_ -match '^([^=]+)=(.*)$') {
         $key = $matches[1]
         $value = $matches[2]
+        $envVars[$key] = $value
         [Environment]::SetEnvironmentVariable($key, $value)
         Set-Item -Path "env:$key" -Value $value
     }
@@ -48,9 +50,43 @@ if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
     exit 1
 }
 
-# Build Docker image
+# Build Docker image with public environment variables
 Write-ColorOutput Green "Building Docker image..."
-docker build -t tulparexpress .
+$buildArgs = @(
+    "--build-arg", "NEXT_PUBLIC_APP_URL=$($envVars['NEXT_PUBLIC_APP_URL'])",
+    "--build-arg", "NEXT_PUBLIC_TELEGRAM_BOT_USERNAME=$($envVars['NEXT_PUBLIC_TELEGRAM_BOT_USERNAME'])",
+    "--build-arg", "PORT=$($envVars['PORT'])"
+)
+
+Write-ColorOutput Yellow "Running build command with public variables only..."
+docker build $buildArgs -t tulparexpress .
+
+# Check Railway CLI
+Write-ColorOutput Green "Checking Railway CLI..."
+if (-not (Get-Command railway -ErrorAction SilentlyContinue)) {
+    Write-ColorOutput Yellow "Railway CLI not found, installing..."
+    npm i -g @railway/cli
+}
+
+# Set up Railway variables
+Write-ColorOutput Green "Setting up Railway variables..."
+$secretVars = @(
+    "NEXT_PUBLIC_SUPABASE_URL",
+    "NEXT_PUBLIC_SUPABASE_ANON_KEY",
+    "SUPABASE_SECRET_KEY",
+    "SUPABASE_JWT_SECRET",
+    "DATABASE_URL",
+    "TELEGRAM_BOT_TOKEN",
+    "TELEGRAM_WEBHOOK_SECRET",
+    "TELEGRAM_USER_SECRET"
+)
+
+foreach ($key in $secretVars) {
+    if ($envVars.ContainsKey($key)) {
+        Write-ColorOutput Yellow "Setting Railway variable: $key"
+        railway variables set "$key=$($envVars[$key])" --service tulparexpress
+    }
+}
 
 # Set up Telegram webhook
 Write-ColorOutput Green "Setting up Telegram webhook..."
@@ -66,13 +102,6 @@ try {
     }
 } catch {
     Write-ColorOutput Red "Failed to set webhook: $_"
-}
-
-# Check Railway CLI
-Write-ColorOutput Green "Checking Railway CLI..."
-if (-not (Get-Command railway -ErrorAction SilentlyContinue)) {
-    Write-ColorOutput Yellow "Railway CLI not found, installing..."
-    npm i -g @railway/cli
 }
 
 # Deploy to Railway
