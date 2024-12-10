@@ -1,16 +1,29 @@
-# Используем Node.js как базовый образ
-FROM node:18-alpine AS builder
+# syntax=docker/dockerfile:1.4
+FROM node:18-alpine AS base
 
-# Устанавливаем рабочую директорию
+# Устанавливаем зависимости для улучшения производительности
+RUN apk add --no-cache libc6-compat
+RUN npm install -g npm@latest
+
+# Включаем Turbo для ускорения сборки
+ENV TURBO_TELEMETRY_DISABLED=1
+ENV NEXT_TELEMETRY_DISABLED=1
+
+FROM base AS deps
 WORKDIR /app
 
-# Копируем package.json и package-lock.json
-COPY package*.json ./
+# Копируем файлы зависимостей
+COPY package.json package-lock.json* ./
 
-# Устанавливаем зависимости
-RUN npm install
+# Устанавливаем зависимости с использованием кэша
+RUN --mount=type=cache,target=/root/.npm \
+    npm ci --only=production
 
-# Копируем исходный код
+FROM base AS builder
+WORKDIR /app
+
+# Копируем зависимости из предыдущего этапа
+COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
 # Аргументы сборки для публичных переменных окружения
@@ -23,28 +36,38 @@ ENV NEXT_PUBLIC_APP_URL=${NEXT_PUBLIC_APP_URL}
 ENV NEXT_PUBLIC_TELEGRAM_BOT_USERNAME=${NEXT_PUBLIC_TELEGRAM_BOT_USERNAME}
 ENV PORT=${PORT}
 
-# Отключаем телеметрию Next.js
-ENV NEXT_TELEMETRY_DISABLED=1
+# Оптимизируем сборку
+RUN --mount=type=cache,target=/root/.npm \
+    npm run build
 
-# Собираем приложение
-RUN npm run build
-
-# Создаем отдельный образ для production
-FROM node:18-alpine AS runner
-
+FROM base AS runner
 WORKDIR /app
 
-# Копируем необходимые файлы из builder
-COPY --from=builder /app/.next/standalone ./
-COPY --from=builder /app/.next/static ./.next/static
-COPY --from=builder /app/public ./public
-
-# Устанавливаем переменные окружения
-ENV PORT=${PORT}
+# Устанавливаем переменные окружения для production
 ENV NODE_ENV=production
+ENV PORT=${PORT}
+
+# Создаем непривилегированного пользователя
+RUN addgroup --system --gid 1001 nodejs && \
+    adduser --system --uid 1001 nextjs
+
+# Устанавливаем правильные разрешения для кэша Next.js
+RUN mkdir .next && \
+    chown nextjs:nodejs .next
+
+# Копируем необходимые файлы из builder
+COPY --from=builder --chown=nextjs:nodejs /app/public ./public
+COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
+COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
+
+# Переключаемся на непривилегированного пользователя
+USER nextjs
 
 # Открываем порт
 EXPOSE ${PORT}
+
+# Оптимизируем для production
+ENV NODE_OPTIONS='--max-old-space-size=4096'
 
 # Запускаем приложение
 CMD ["node", "server.js"]

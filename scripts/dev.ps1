@@ -45,9 +45,9 @@ docker rm tulparexpress-dev 2>$null
 # Build Docker image with public environment variables
 Write-ColorOutput Green "Building development Docker image..."
 $buildArgs = @(
+    "--build-arg", "PORT=3000",
     "--build-arg", "NEXT_PUBLIC_APP_URL=$($envVars['NEXT_PUBLIC_APP_URL'])",
-    "--build-arg", "NEXT_PUBLIC_TELEGRAM_BOT_USERNAME=$($envVars['NEXT_PUBLIC_TELEGRAM_BOT_USERNAME'])",
-    "--build-arg", "PORT=3000"
+    "--build-arg", "NEXT_PUBLIC_TELEGRAM_BOT_USERNAME=$($envVars['NEXT_PUBLIC_TELEGRAM_BOT_USERNAME'])"
 )
 
 $buildCommand = "docker build $buildArgs -t tulparexpress-dev -f Dockerfile.dev ."
@@ -59,9 +59,9 @@ Write-ColorOutput Green "Starting development container..."
 docker run -d `
     --name tulparexpress-dev `
     -p 3000:3000 `
-    -v ${PWD}:/app `
-    -v /app/node_modules `
-    -v /app/.next `
+    -v "${PWD}:/app" `
+    -v "/app/node_modules" `
+    -v "/app/.next" `
     --env-file .env.production `
     tulparexpress-dev
 

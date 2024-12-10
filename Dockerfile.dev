@@ -13,12 +13,19 @@ RUN npm install
 # Копируем исходный код
 COPY . .
 
+# Аргументы сборки для публичных переменных окружения
+ARG PORT=3000
+ARG NEXT_PUBLIC_APP_URL
+ARG NEXT_PUBLIC_TELEGRAM_BOT_USERNAME
+
 # Устанавливаем переменные окружения для разработки
 ENV NODE_ENV=development
-ENV PORT=3000
+ENV PORT=${PORT}
+ENV NEXT_PUBLIC_APP_URL=${NEXT_PUBLIC_APP_URL}
+ENV NEXT_PUBLIC_TELEGRAM_BOT_USERNAME=${NEXT_PUBLIC_TELEGRAM_BOT_USERNAME}
 
 # Открываем порт
-EXPOSE 3000
+EXPOSE ${PORT}
 
 # Запускаем приложение в режиме разработки
 CMD ["npm", "run", "dev"]

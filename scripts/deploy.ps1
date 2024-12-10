@@ -17,6 +17,20 @@ function Write-ColorOutput {
     $host.UI.RawUI.ForegroundColor = $fc
 }
 
+# Function to check if Docker image exists
+function Test-DockerImage {
+    param([string]$ImageName)
+    $image = docker images -q $ImageName
+    return ![string]::IsNullOrEmpty($image)
+}
+
+# Function to check if container exists
+function Test-DockerContainer {
+    param([string]$ContainerName)
+    $container = docker ps -a -q -f name=$ContainerName
+    return ![string]::IsNullOrEmpty($container)
+}
+
 # Load environment variables from .env.production
 Write-ColorOutput Green "Loading environment variables..."
 $envVars = @{}
@@ -50,62 +64,93 @@ if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
     exit 1
 }
 
-# Build Docker image with public environment variables
-Write-ColorOutput Green "Building Docker image..."
-$buildArgs = @(
-    "--build-arg", "NEXT_PUBLIC_APP_URL=$($envVars['NEXT_PUBLIC_APP_URL'])",
-    "--build-arg", "NEXT_PUBLIC_TELEGRAM_BOT_USERNAME=$($envVars['NEXT_PUBLIC_TELEGRAM_BOT_USERNAME'])",
-    "--build-arg", "PORT=$($envVars['PORT'])"
-)
+# Check if we need to rebuild the image
+$needRebuild = $true
+if (Test-DockerImage "tulparexpress:latest") {
+    $lastBuildTime = docker inspect -f '{{.Created}}' tulparexpress:latest
+    $lastCommitTime = git log -1 --format=%cd --date=iso
+    if ([DateTime]::Parse($lastBuildTime) -gt [DateTime]::Parse($lastCommitTime)) {
+        Write-ColorOutput Yellow "Docker image is up to date, skipping build..."
+        $needRebuild = $false
+    }
+}
 
-Write-ColorOutput Yellow "Running build command with public variables only..."
-docker build $buildArgs -t tulparexpress .
+if ($needRebuild) {
+    # Build Docker image with public environment variables
+    Write-ColorOutput Green "Building Docker image..."
+    $buildArgs = @(
+        "--build-arg", "NEXT_PUBLIC_APP_URL=$($envVars['NEXT_PUBLIC_APP_URL'])",
+        "--build-arg", "NEXT_PUBLIC_TELEGRAM_BOT_USERNAME=$($envVars['NEXT_PUBLIC_TELEGRAM_BOT_USERNAME'])",
+        "--build-arg", "PORT=$($envVars['PORT'])"
+    )
 
-# Check Railway CLI
+    # Используем Docker BuildKit для ускорения сборки
+    $env:DOCKER_BUILDKIT = 1
+    $buildCommand = "docker build --no-cache $buildArgs -t tulparexpress ."
+    Write-ColorOutput Yellow "Running build command: $buildCommand"
+    Invoke-Expression $buildCommand
+}
+
+# Check Railway CLI and login status
 Write-ColorOutput Green "Checking Railway CLI..."
 if (-not (Get-Command railway -ErrorAction SilentlyContinue)) {
     Write-ColorOutput Yellow "Railway CLI not found, installing..."
     npm i -g @railway/cli
 }
 
-# Set up Railway variables
-Write-ColorOutput Green "Setting up Railway variables..."
-$secretVars = @(
-    "NEXT_PUBLIC_SUPABASE_URL",
-    "NEXT_PUBLIC_SUPABASE_ANON_KEY",
-    "SUPABASE_SECRET_KEY",
-    "SUPABASE_JWT_SECRET",
-    "DATABASE_URL",
-    "TELEGRAM_BOT_TOKEN",
-    "TELEGRAM_WEBHOOK_SECRET",
-    "TELEGRAM_USER_SECRET"
-)
+# Deploy to Railway with progress tracking
+Write-ColorOutput Green "Deploying to Railway..."
+$deploymentStart = Get-Date
+$env:RAILWAY_TOKEN = $envVars['RAILWAY_TOKEN']
 
-foreach ($key in $secretVars) {
-    if ($envVars.ContainsKey($key)) {
-        Write-ColorOutput Yellow "Setting Railway variable: $key"
-        railway variables set "$key=$($envVars[$key])" --service tulparexpress
-    }
-}
-
-# Set up Telegram webhook
-Write-ColorOutput Green "Setting up Telegram webhook..."
-$botToken = $env:TELEGRAM_BOT_TOKEN
-Write-ColorOutput Yellow "Using bot token: $botToken"
-$webhookUrl = "https://te.kg/api/telegram/webhook"
 try {
+    # Используем параллельное выполнение где возможно
+    $jobs = @()
+
+    # Устанавливаем переменные окружения параллельно
+    Write-ColorOutput Green "Setting up Railway variables..."
+    $secretVars = @(
+        "NEXT_PUBLIC_SUPABASE_URL",
+        "NEXT_PUBLIC_SUPABASE_ANON_KEY",
+        "SUPABASE_SECRET_KEY",
+        "SUPABASE_JWT_SECRET",
+        "DATABASE_URL",
+        "TELEGRAM_BOT_TOKEN",
+        "TELEGRAM_WEBHOOK_SECRET",
+        "TELEGRAM_USER_SECRET"
+    )
+
+    foreach ($key in $secretVars) {
+        if ($envVars.ContainsKey($key)) {
+            $jobs += Start-Job -ScriptBlock {
+                param($key, $value)
+                railway variables set "$key=$value"
+            } -ArgumentList $key, $envVars[$key]
+        }
+    }
+
+    # Ждем завершения всех задач
+    $jobs | Wait-Job | Receive-Job
+
+    # Деплоим приложение
+    railway up --detach
+
+    # Настраиваем webhook для Telegram
+    Write-ColorOutput Green "Setting up Telegram webhook..."
+    $botToken = $envVars['TELEGRAM_BOT_TOKEN']
+    $webhookUrl = "https://te.kg/api/telegram/webhook"
     $response = Invoke-RestMethod -Uri "https://api.telegram.org/bot$botToken/setWebhook?url=$webhookUrl" -Method Get
+
     if ($response.ok) {
         Write-ColorOutput Green "Webhook set successfully"
     } else {
         Write-ColorOutput Red "Error setting webhook: $($response.description)"
     }
+
+    $deploymentDuration = (Get-Date) - $deploymentStart
+    Write-ColorOutput Green "Deploy completed in $($deploymentDuration.TotalSeconds) seconds!"
+    Write-ColorOutput Green "App is available at: https://te.kg"
 } catch {
-    Write-ColorOutput Red "Failed to set webhook: $_"
+    Write-ColorOutput Red "Deployment failed: $_"
+    exit 1
 }
-
-# Deploy to Railway
-Write-ColorOutput Green "Deploying to Railway..."
-railway up
-
-Write-ColorOutput Green "Deploy completed! App is available at: https://te.kg"

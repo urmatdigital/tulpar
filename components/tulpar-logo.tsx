@@ -19,18 +19,20 @@ export const TulparLogo = () => {
   return (
     <div className="flex items-center gap-2">
       <Image
-        src="/logo.png"
+        src="/tulpar195X195.png"
         alt="Tulpar Logo"
         width={36}
         height={36}
         className="rounded-full"
+        priority
       />
       <Image
         src={logoSrc}
         alt="Tulpar"
-        width={100}
-        height={24}
-        className="hidden sm:block"
+        width={120}
+        height={28}
+        className="hidden sm:block dark:invert"
+        priority
       />
     </div>
   );
