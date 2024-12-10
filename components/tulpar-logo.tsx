@@ -22,10 +22,7 @@ export const TulparLogo = () => {
     );
   }
 
-  const logoSrc = theme === "dark" 
-    ? "/tulpar_text_logo_light.svg"
-    : "/tulpar_text_logo_dark.svg";
-
+  // Используем один SVG файл и инвертируем его для темной темы
   return (
     <div className="flex items-center gap-2">
       <Image
@@ -37,11 +34,11 @@ export const TulparLogo = () => {
         priority
       />
       <Image
-        src={logoSrc}
+        src="/tulpar_text_logo.svg"
         alt="Tulpar"
         width={120}
         height={28}
-        className="hidden sm:block dark:invert"
+        className={`hidden sm:block ${theme === 'dark' ? 'invert' : ''}`}
         priority
       />
     </div>

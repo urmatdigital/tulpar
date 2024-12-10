@@ -14,31 +14,33 @@ bot.setWebHook(webhookUrl, {
 });
 
 /**
- * Отправляет сообщение через Telegram
+ * Оптимизированная отправка сообщения
  */
 export async function sendTelegramMessage(chatId: string, message: string): Promise<boolean> {
   try {
-    await bot.sendMessage(chatId, message, { parse_mode: "HTML" });
+    // Устанавливаем таймаут в 5 секунд
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 5000);
+
+    await bot.sendMessage(chatId, message, { 
+      parse_mode: "HTML",
+      disable_web_page_preview: true, // Отключаем предпросмотр ссылок
+      disable_notification: true // Отключаем уведомления
+    });
+
+    clearTimeout(timeoutId);
     return true;
   } catch (error) {
-    console.error("Error sending Telegram message:", error);
+    console.error("Telegram error:", error);
     return false;
   }
 }
 
 /**
- * Отправляет код верификации через Telegram
+ * Оптимизированная отправка кода верификации
  */
 export async function sendVerificationCode(telegramId: string, code: string): Promise<boolean> {
-  const message = `
-<b>TULPAR EXPRESS - Код верификации</b>
-
-Ваш код верификации: <code>${code}</code>
-
-Этот код действителен в течение 5 минут.
-Не передавайте его никому!
-`;
-
+  const message = `<b>Код: ${code}</b>`;
   return sendTelegramMessage(telegramId, message);
 }
 
