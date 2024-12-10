@@ -20,15 +20,4 @@ jobs:
       - name: Deploy to Railway
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
-          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
-          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
-          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_WEBHOOK_SECRET: ${{ secrets.TELEGRAM_WEBHOOK_SECRET }}
-          TELEGRAM_USER_SECRET: ${{ secrets.TELEGRAM_USER_SECRET }}
-          NEXT_PUBLIC_TELEGRAM_BOT_USERNAME: ${{ secrets.NEXT_PUBLIC_TELEGRAM_BOT_USERNAME }}
-          NEXT_PUBLIC_APP_URL: ${{ secrets.NEXT_PUBLIC_APP_URL }}
-          FRONTEND_URL: ${{ secrets.FRONTEND_URL }}
-          PORT: 3000
         run: railway up --detach
